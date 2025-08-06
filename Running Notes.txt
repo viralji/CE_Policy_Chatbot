@@ -1,0 +1,9 @@
+
+npm start
+
+Restart Backend : 
+cd "D:\Viral Shah Data\OneDrive - cloudextel.com\Documents\CloudExtel\Python"
+python -m venv env
+.\env\Scripts\activate
+python app.py
+ 
