@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
-from langchain.text_splitter import CharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
@@ -36,11 +36,13 @@ def load_all_pdfs(folder='data'):
                     text += content
     return text
 
+
 print("Loading PDFs...")
 raw_text = load_all_pdfs()
 print(f"Total text length: {len(raw_text)} characters")
 
-text_splitter = CharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
+# Use RecursiveCharacterTextSplitter for better chunking
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
 texts = text_splitter.split_text(raw_text)
 print(f"Total chunks: {len(texts)}")
 
