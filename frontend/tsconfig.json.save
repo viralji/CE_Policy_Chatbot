@@ -1,3 +1,4 @@
+
 {
   "compilerOptions": {
     "target": "es5",
@@ -19,8 +20,6 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx"
-    "types": ["jest", "node", "@testing-library/jest-dom"],
-    "skipLibCheck": true
   },
   "include": [
     "src"
