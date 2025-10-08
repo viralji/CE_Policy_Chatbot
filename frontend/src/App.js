@@ -50,21 +50,13 @@ const App = () => {
         const data = await response.json();
         const botMessage = {
           id: Date.now() + 1,
-          text: data.response,
+          text: data.response, // This is now an array of strings
+          sources: data.sources, // This is an array of source objects
           sender: 'bot',
           timestamp: new Date()
         };
         
-        // Show context if available
-        const contextMessage = {
-          id: Date.now() + 2,
-          text: `🔍 Context: ${data.provided_context || 'No specific context found'}`,
-          sender: 'bot',
-          timestamp: new Date(),
-          isContext: true
-        };
-
-        setMessages(prev => [...prev, botMessage, contextMessage]);
+        setMessages(prev => [...prev, botMessage]);
       } else {
         const errorData = await response.json();
         setMessages(prev => [...prev, {
@@ -218,7 +210,28 @@ const App = () => {
                     fontStyle: message.isContext ? 'italic' : 'normal'
                   }}
                 >
-                  {message.text}
+                  {/* Render based on data type from backend */}
+                  {message.sender === 'bot' && Array.isArray(message.text) ? (
+                    <ul>
+                      {message.text.map((point, i) => (
+                        <li key={i}>
+                          {point}
+                          {message.sources && message.sources[i] && (
+                            <a 
+                              href={message.sources[i].link} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              style={{ color: '#63b2f6', textDecoration: 'underline', marginLeft: '8px' }}
+                            >
+                              ({message.sources[i].file} p.{message.sources[i].page})
+                            </a>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    message.text
+                  )}
                 </div>
               </div>
             </div>

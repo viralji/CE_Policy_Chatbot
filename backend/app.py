@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
@@ -25,8 +25,6 @@ app = Flask(__name__)
 CORS(app)
 
 # ---------------------- Load and Split PDFs ----------------------
-
-# Load all PDFs and keep track of file and page for each chunk
 def load_all_pdfs_with_metadata(folder='data'):
     docs = []
     for file in os.listdir(folder):
@@ -44,14 +42,11 @@ def load_all_pdfs_with_metadata(folder='data'):
                     })
     return docs
 
-
-
 print("Loading PDFs...")
 docs = load_all_pdfs_with_metadata()
 total_text_length = sum(len(doc['text']) for doc in docs)
 print(f"Total text length: {total_text_length} characters")
 
-# Split each doc into chunks, keeping metadata
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 chunks = []
 for doc in docs:
@@ -64,12 +59,11 @@ for doc in docs:
 print(f"Total chunks: {len(chunks)}")
 
 # ---------------------- Create Embeddings and Vectorstore ----------------------
-
-
 print("Creating/loading FAISS index...")
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 faiss_index_dir = "faiss_index"
 faiss_index_file = os.path.join(faiss_index_dir, "index.faiss")
+
 if os.path.exists(faiss_index_file):
     print("Loading FAISS index from disk...")
     vectorstore = FAISS.load_local(faiss_index_dir, embeddings, allow_dangerous_deserialization=True)
@@ -82,22 +76,21 @@ else:
 print("Vectorstore ready!")
 
 # ---------------------- Setup Chatbot Chain ----------------------
-memory_key = "chat_history"
-memory = ConversationBufferMemory(memory_key=memory_key, return_messages=True)
-# Limit retriever to top 4 results
+memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages=True,
+    output_key="answer"
+)
 retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 qa_chain = ConversationalRetrievalChain.from_llm(
     llm=ChatGoogleGenerativeAI(model="models/gemini-2.5-pro", temperature=0),
     retriever=retriever,
     memory=memory,
     return_source_documents=True,
-    output_key="answer"
+    get_chat_history=lambda h: h
 )
 
 # ---------------------- API Endpoints ----------------------
-
-# Serve files for linking
-from flask import send_from_directory
 @app.route('/files/<path:filename>')
 def serve_file(filename):
     return send_from_directory('data', filename)
@@ -110,43 +103,33 @@ def chat():
         if not question:
             return jsonify({'error': 'Question is required'}), 400
 
-        # Add instruction for bullet formatting
-        prompt = f"Answer the following question in bullet points. For each point, mention the file and page number if available.\n\nQuestion: {question}"
-        # Only pass the question to the chain
-        result = qa_chain({"question": prompt})
+        # Pass the question directly to the chain.
+        result = qa_chain({"question": question})
         answer = result['answer']
-
-        # Collect sources from returned documents
-        sources = []
         source_docs = result.get('source_documents', [])
+
+        # Collect sources and format as a list of dictionaries
+        sources = []
         for doc in source_docs:
             meta = doc.metadata if hasattr(doc, 'metadata') else doc.get('metadata', {})
             file = meta.get('source')
             page = meta.get('page')
             if file:
-                link = f"/files/{file}#page={page}" if page else f"/files/{file}"
+                link = f"http://localhost:5000/files/{file}#page={page}" if page else f"http://localhost:5000/files/{file}"
                 sources.append({
                     'file': file,
                     'page': page,
                     'link': link
                 })
 
-        # Format the answer as HTML bullet points and add file/page info if available
+        # Split the answer into bullet points for the frontend to format
         answer_lines = [line.strip('-*• ') for line in answer.split('\n') if line.strip()]
-        formatted_points = []
-        for i, point in enumerate(answer_lines):
-            # Try to attach file/page link if available
-            if i < len(sources):
-                src = sources[i]
-                file = src.get('file')
-                page = src.get('page')
-                link = src.get('link')
-                if file and link:
-                    point += f' (<a href="{link}" target="_blank">{file} p.{page}</a>)'
-            formatted_points.append(f'<li>{point}</li>')
-        formatted_answer = f'<ul>\n' + '\n'.join(formatted_points) + '\n</ul>' if formatted_points else answer
 
-        return jsonify({'response': formatted_answer, 'sources': sources})
+        # Return a structured JSON response
+        return jsonify({
+            'response': answer_lines, # A list of strings
+            'sources': sources
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
