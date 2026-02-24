@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, User, Send } from 'lucide-react';
+import { Bot, User, Send, LogOut } from 'lucide-react';
+import { useMsal } from '@azure/msal-react';
+import { loginRequest } from './authConfig';
+import LoginPage from './LoginPage';
 
 const App = () => {
+  const { instance, accounts } = useMsal();
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -14,8 +18,12 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // API Configuration
-  const API_BASE_URL = 'http://localhost:5000';
+  // Production: use same origin when served at e.g. https://chatbot.cloudextel.com (or set REACT_APP_API_URL at build time)
+  const API_BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    (typeof window !== 'undefined' && window.location.origin !== 'http://localhost:5174'
+      ? window.location.origin
+      : 'http://localhost:4001');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -24,6 +32,30 @@ const App = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const getAuthHeaders = async () => {
+    if (!accounts || !accounts[0]) return {};
+    try {
+      const result = await instance.acquireTokenSilent({
+        ...loginRequest,
+        account: accounts[0],
+      });
+      const token = result.idToken || result.accessToken;
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch (e) {
+      console.error('Token acquisition failed', e);
+      return {};
+    }
+  };
+
+  const handleLogout = () => {
+    instance.logoutRedirect({ postLogoutRedirectUri: window.location.origin });
+  };
+
+  // Only org users (with Microsoft login) see the chat — after all hooks
+  if (!accounts || accounts.length === 0) {
+    return <LoginPage />;
+  }
 
   const sendMessage = async () => {
     if (!inputMessage.trim()) return;
@@ -40,9 +72,13 @@ const App = () => {
     setIsLoading(true);
 
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
         body: JSON.stringify({ question: userMessage.text })
       });
 
@@ -50,13 +86,20 @@ const App = () => {
         const data = await response.json();
         const botMessage = {
           id: Date.now() + 1,
-          text: data.response, // This is now an array of strings
-          sources: data.sources, // This is an array of source objects
+          text: data.response,
+          sources: data.sources,
           sender: 'bot',
           timestamp: new Date()
         };
-        
         setMessages(prev => [...prev, botMessage]);
+      } else if (response.status === 401 || response.status === 403) {
+        const errorData = await response.json().catch(() => ({}));
+        setMessages(prev => [...prev, {
+          id: Date.now() + 1,
+          text: errorData.error || 'Please sign in again. If you see this repeatedly, try logging out and back in.',
+          sender: 'bot',
+          timestamp: new Date()
+        }]);
       } else {
         const errorData = await response.json();
         setMessages(prev => [...prev, {
@@ -70,7 +113,7 @@ const App = () => {
       console.error('Network error:', error);
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
-        text: 'Sorry, I\'m having trouble connecting to the server. Please check if the backend is running on localhost:5000.',
+        text: `Sorry, I'm having trouble connecting to the server. Please check if the backend is running at ${API_BASE_URL}.`,
         sender: 'bot',
         timestamp: new Date()
       }]);
@@ -130,21 +173,29 @@ const App = () => {
             CloudExtel Assistant
           </h1>
         </div>
-        <div 
-          style={{
-            width: '40px',
-            height: '40px',
-            backgroundColor: '#333333',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '14px',
-            fontWeight: '500',
-            color: '#999999'
-          }}
-        >
-          CE
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '13px', color: '#999', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {accounts[0]?.username || 'User'}
+          </span>
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Sign out"
+            style={{
+              width: '36px',
+              height: '36px',
+              backgroundColor: 'transparent',
+              border: '1px solid #444',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#999'
+            }}
+          >
+            <LogOut size={18} />
+          </button>
         </div>
       </div>
 

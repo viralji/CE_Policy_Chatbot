@@ -1,0 +1,11 @@
+flask
+flask-cors
+python-dotenv
+PyPDF2
+langchain
+langchain-google-genai
+langchain-community
+google-generativeai
+PyJWT
+cryptography
+requests

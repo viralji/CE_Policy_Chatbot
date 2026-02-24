@@ -1,5 +1,7 @@
 # Python
 backend/.venv/
+backend/venv/
+backend/faiss_index/
 __pycache__/
 *.pyc
 
@@ -12,5 +14,8 @@ frontend/dist/
 .env
 *.env
 
-# Logs
+# Logs and deploy
 *.log
+logs/
+.backend.pid
+.frontend.pid

@@ -1,5 +1,6 @@
 import os
-from flask import Flask, request, jsonify, send_from_directory
+import traceback
+from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
@@ -10,9 +11,11 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 import google.generativeai as genai
 
-# ---------------------- Load API key from .env ----------------------
+# ---------------------- Load API key and config from .env ----------------------
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+BACKEND_PORT = int(os.getenv("PORT", "4001"))
+BASE_URL = os.getenv("BASE_URL", f"http://localhost:{BACKEND_PORT}")
 
 if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY not found in .env file")
@@ -59,8 +62,9 @@ for doc in docs:
 print(f"Total chunks: {len(chunks)}")
 
 # ---------------------- Create Embeddings and Vectorstore ----------------------
+# If you change the embedding model, delete the faiss_index folder so it rebuilds (dimension must match).
 print("Creating/loading FAISS index...")
-embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 faiss_index_dir = "faiss_index"
 faiss_index_file = os.path.join(faiss_index_dir, "index.faiss")
 
@@ -90,12 +94,21 @@ qa_chain = ConversationalRetrievalChain.from_llm(
     get_chat_history=lambda h: h
 )
 
+# ---------------------- Auth (Microsoft Azure AD) ----------------------
+from auth_middleware import require_auth
+
 # ---------------------- API Endpoints ----------------------
 @app.route('/files/<path:filename>')
 def serve_file(filename):
     return send_from_directory('data', filename)
 
+@app.route('/api/auth/me', methods=['GET'])
+@require_auth
+def auth_me():
+    return jsonify(g.user)
+
 @app.route('/api/chat', methods=['POST'])
+@require_auth
 def chat():
     try:
         data = request.json
@@ -115,7 +128,7 @@ def chat():
             file = meta.get('source')
             page = meta.get('page')
             if file:
-                link = f"http://localhost:5000/files/{file}#page={page}" if page else f"http://localhost:5000/files/{file}"
+                link = f"{BASE_URL}/files/{file}#page={page}" if page else f"{BASE_URL}/files/{file}"
                 sources.append({
                     'file': file,
                     'page': page,
@@ -131,7 +144,9 @@ def chat():
             'sources': sources
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        err_msg = str(e) or f"{type(e).__name__}: (no message)"
+        print(traceback.format_exc(), flush=True)
+        return jsonify({'error': err_msg}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health():
@@ -139,4 +154,5 @@ def health():
 
 # ---------------------- Run App ----------------------
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # debug=False avoids DebuggedApplication multiprocessing PermissionError on /dev/shm (e.g. WSL)
+    app.run(debug=False, host='0.0.0.0', port=BACKEND_PORT)
