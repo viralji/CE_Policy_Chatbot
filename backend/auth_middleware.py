@@ -1,6 +1,7 @@
 """
-Microsoft Azure AD (Entra) JWT validation for org-only access.
-Validates ID token from frontend (MSAL) and enforces allowed email domain.
+Auth for CE Policy Chatbot: Next.js proxy (X-Internal-Proxy-Secret + X-User-Email) or Bearer token.
+When Azure is configured, accepts requests from Next.js with shared secret; otherwise Bearer JWT.
+When INTERNAL_PROXY_SECRET is unset, a dev-only secret is accepted from localhost for local development.
 """
 import os
 from functools import wraps
@@ -63,7 +64,7 @@ def get_email_from_payload(payload):
 
 
 def require_auth(f):
-    """Decorator: require valid Azure AD ID token and allowed domain."""
+    """Decorator: require valid auth via Next.js proxy (X-Internal-Proxy-Secret + X-User-Email) or Bearer token."""
 
     @wraps(f)
     def wrapped(*args, **kwargs):
@@ -72,6 +73,26 @@ def require_auth(f):
         if not tenant_id or not client_id:
             g.user = {"email": "dev@local", "name": "Dev User"}
             return f(*args, **kwargs)
+
+        # Next.js proxy: accept internal secret + user email (restrict to localhost)
+        secret = os.getenv("INTERNAL_PROXY_SECRET", "").strip()
+        # Local dev: when unset, accept "dev-secret" from localhost only (never in production)
+        dev_secret = "dev-secret"
+        if not secret:
+            secret = dev_secret
+        proxy_secret = (request.headers.get("X-Internal-Proxy-Secret") or "").strip()
+        user_email = (request.headers.get("X-User-Email") or "").strip()
+        if proxy_secret == secret and user_email:
+            remote = (request.remote_addr or "").strip()
+            if remote in ("127.0.0.1", "::1", ""):
+                g.user = {
+                    "email": user_email,
+                    "name": (request.headers.get("X-User-Name") or "").strip() or user_email,
+                }
+                return f(*args, **kwargs)
+        # If we used dev_secret fallback, don't fall through to Bearer (we already rejected)
+        if secret == dev_secret:
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
         auth = request.headers.get("Authorization")
         if not auth or not auth.startswith("Bearer "):

@@ -2,8 +2,8 @@
 
 CloudExtel policy Q&A assistant: RAG over company PDFs (handbook, policies) with Microsoft (Azure AD) org-only login.
 
-- **Frontend:** React + MSAL (sign-in with Microsoft; only `@cloudextel.com` allowed).
-- **Backend:** Flask + LangChain + Google Gemini (embeddings + chat) + FAISS over PDFs in `backend/data/`.
+- **Frontend:** Next.js + NextAuth (Azure AD Web; sign-in with Microsoft; only `@cloudextel.com` allowed).
+- **Backend:** Flask + LangChain + Google Gemini (embeddings + chat) + FAISS over **PDFs and DOCX** in `backend/data/`. Chat memory is **per user** (no cross-user bleed). FAISS index rebuilds when source files change.
 - **Production URL:** [https://chatbot.cloudextel.com](https://chatbot.cloudextel.com)
 
 ---
@@ -24,17 +24,18 @@ CloudExtel policy Q&A assistant: RAG over company PDFs (handbook, policies) with
    ```bash
    cd frontend
    npm install
-   cp .env.example .env   # optional: set REACT_APP_* and PORT
-   npm start
+   cp .env.example .env   # set NEXTAUTH_*, AZURE_*, BACKEND_URL; INTERNAL_PROXY_SECRET optional for local dev
+   npm run dev
    ```
-3. Open **http://localhost:5174** → Sign in with Microsoft (org account) → chat.
+3. Open **http://localhost:5174** → Sign in with Microsoft (org account) → chat.  
+   **Local only:** On the sign-in page, "Bypass Authentication (Dev)" skips Azure and uses a dev cookie; leave `INTERNAL_PROXY_SECRET` empty in both `.env` files and chat will still work.
 
 ---
 
 ## Environment
 
-- **Backend:** `backend/.env` — see `backend/.env.example` for variables. Required: `GOOGLE_API_KEY`. For auth: `AZURE_AD_TENANT_ID`, `AZURE_AD_CLIENT_ID`, `ALLOWED_DOMAIN`. Optional: `PORT`, `BASE_URL`.
-- **Frontend:** `frontend/.env` — see `frontend/.env.example`. `REACT_APP_API_URL` (backend URL), `REACT_APP_AZURE_*` (if not using defaults), `PORT` (dev server port).
+- **Backend:** `backend/.env` — see `backend/.env.example`. Required: `GOOGLE_API_KEY`. For auth: `AZURE_AD_TENANT_ID`, `AZURE_AD_CLIENT_ID`, `ALLOWED_DOMAIN`; `INTERNAL_PROXY_SECRET` (same as frontend) required for production, optional for local dev. Optional: `PORT`, `BASE_URL`.
+- **Frontend:** `frontend/.env` — see `frontend/.env.example`. Next.js: `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `AZURE_AD_*`, `ALLOWED_DOMAIN`, `BACKEND_URL`, `INTERNAL_PROXY_SECRET` (optional for local dev), `PORT`.
 
 Never commit real `.env` files (they are in `.gitignore`). Use `.env.example` as a template.
 
@@ -42,9 +43,9 @@ Never commit real `.env` files (they are in `.gitignore`). Use `.env.example` as
 
 ## Auth (Microsoft, org-only)
 
-Only users whose email domain matches `ALLOWED_DOMAIN` (e.g. `cloudextel.com`) can use the app. Same Azure AD app as CE_DF_Photos.
+Only users whose email domain matches `ALLOWED_DOMAIN` (e.g. `cloudextel.com`) can use the app. Same Azure AD app as CE_DF_Photos (Web platform only).
 
-- **Redirect URIs in Azure:** `http://localhost:5174` (local), `https://chatbot.cloudextel.com` (prod).
+- **Redirect URIs in Azure:** `http://localhost:5174/api/auth/callback/azure-ad`, `https://chatbot.cloudextel.com/api/auth/callback/azure-ad`.
 - Full details: **[AUTH.md](AUTH.md)**.
 
 ---
@@ -66,9 +67,9 @@ From the **project root**:
 ## Production (chatbot.cloudextel.com)
 
 1. In **backend/.env**: set `BASE_URL=https://chatbot.cloudextel.com` (for “View source” links).
-2. In **frontend/.env** (or build-time env): set `REACT_APP_API_URL=https://chatbot.cloudextel.com` before `npm run build`.
-3. In **Azure AD**: add redirect URI `https://chatbot.cloudextel.com`.
-4. On the server, run `./deploy.sh` and point your reverse proxy at backend (e.g. `/api` → `http://127.0.0.1:4001`) and at the frontend (build or `http://127.0.0.1:5174`).
+2. In **frontend/.env**: set `NEXTAUTH_URL=https://chatbot.cloudextel.com`, `BACKEND_URL=http://127.0.0.1:4001` (or internal hostname) before `npm run build`.
+3. In **Azure AD**: add Web redirect URI `https://chatbot.cloudextel.com/api/auth/callback/azure-ad`.
+4. On the server, run `./deploy.sh` then `./restart.sh`; point your reverse proxy at the Next.js app (e.g. `http://127.0.0.1:5174`). Next.js proxies `/api/chat` and `/api/files` to the Flask backend.
 
 ---
 
@@ -81,18 +82,18 @@ CE_Policy_Chatbot/
 ├── DEPLOY.md          # deploy/restart details
 ├── deploy.sh          # full deploy script
 ├── restart.sh         # restart backend + frontend
+├── scripts/           # server-deploy.sh for clone/pull + deploy on server
 ├── backend/
 │   ├── app.py         # Flask API + RAG
 │   ├── auth_middleware.py
 │   ├── requirements.txt
 │   ├── .env.example
-│   └── data/          # PDFs (handbook, etc.)
+│   └── data/          # PDFs and DOCX (handbook, policies)
 └── frontend/
-    ├── src/
-    │   ├── App.js     # main chat UI + auth gate
-    │   ├── LoginPage.js
-    │   ├── authConfig.js
-    │   └── index.tsx
+    ├── app/           # Next.js App Router (layout, page, signin, chat, api)
+    ├── lib/
+    │   └── auth.ts    # NextAuth (Azure AD) config
     ├── .env.example
+    ├── next.config.mjs
     └── package.json
 ```

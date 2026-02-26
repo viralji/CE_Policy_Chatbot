@@ -27,8 +27,8 @@ done
 
 # Fallback: kill by process name
 pkill -f "python.*app.py" 2>/dev/null || true
-pkill -f "react-scripts start" 2>/dev/null || true
-pkill -f "serve.*build.*$FRONTEND_PORT" 2>/dev/null || true
+pkill -f "next start" 2>/dev/null || true
+pkill -f "next dev" 2>/dev/null || true
 sleep 2
 
 mkdir -p "$SCRIPT_DIR/logs"
@@ -40,19 +40,14 @@ if [ ! -d "venv" ]; then
   exit 1
 fi
 source venv/bin/activate
-nohup python app.py >> "$SCRIPT_DIR/logs/backend.log" 2>&1 &
+nohup python3 app.py >> "$SCRIPT_DIR/logs/backend.log" 2>&1 &
 echo $! > "$SCRIPT_DIR/.backend.pid"
 cd "$SCRIPT_DIR"
 
 echo " Starting frontend (port $FRONTEND_PORT)..."
 cd "$SCRIPT_DIR/frontend"
-if [ -d "build" ]; then
-  # Production: serve static build
-  nohup npx --yes serve -s build -l $FRONTEND_PORT >> "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
-else
-  # Dev: React dev server (no browser open)
-  PORT=$FRONTEND_PORT CI=true nohup npm start >> "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
-fi
+# Use Next.js dev server for local/restart (no build required)
+PORT=$FRONTEND_PORT nohup npm run dev >> "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
 echo $! > "$SCRIPT_DIR/.frontend.pid"
 cd "$SCRIPT_DIR"
 

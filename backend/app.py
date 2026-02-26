@@ -1,4 +1,5 @@
 import os
+import re
 import traceback
 from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
@@ -11,11 +12,19 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 import google.generativeai as genai
 
+try:
+    from docx import Document as DocxDocument
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+    print("Warning: python-docx not installed. DOCX files will be skipped. Run: pip install python-docx", flush=True)
+
 # ---------------------- Load API key and config from .env ----------------------
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 BACKEND_PORT = int(os.getenv("PORT", "4001"))
 BASE_URL = os.getenv("BASE_URL", f"http://localhost:{BACKEND_PORT}")
+MAX_QUESTION_LENGTH = 2000
 
 if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY not found in .env file")
@@ -27,72 +36,125 @@ genai.configure(api_key=GOOGLE_API_KEY)
 app = Flask(__name__)
 CORS(app)
 
-# ---------------------- Load and Split PDFs ----------------------
-def load_all_pdfs_with_metadata(folder='data'):
+# Resolve data folder relative to this file so the app works from any working directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+FAISS_INDEX_DIR = os.path.join(BASE_DIR, 'faiss_index')
+FAISS_INDEX_FILE = os.path.join(FAISS_INDEX_DIR, 'index.faiss')
+
+# ---------------------- Load PDFs and DOCX with metadata ----------------------
+def load_all_docs_with_metadata(folder=DATA_DIR):
     docs = []
-    for file in os.listdir(folder):
+    if not os.path.isdir(folder):
+        print(f"Warning: data folder not found at {folder}", flush=True)
+        return docs
+
+    for file in sorted(os.listdir(folder)):
+        filepath = os.path.join(folder, file)
         if file.endswith('.pdf'):
-            reader = PdfReader(os.path.join(folder, file))
-            for i, page in enumerate(reader.pages):
-                content = page.extract_text()
-                if content:
+            try:
+                reader = PdfReader(filepath)
+                for i, page in enumerate(reader.pages):
+                    content = page.extract_text()
+                    if content and content.strip():
+                        docs.append({
+                            'text': content,
+                            'metadata': {'source': file, 'page': i + 1}
+                        })
+            except Exception as e:
+                print(f"Warning: failed to load PDF '{file}': {e}", flush=True)
+        elif file.endswith('.docx'):
+            if not DOCX_AVAILABLE:
+                print(f"Warning: skipping DOCX '{file}' (python-docx not installed)", flush=True)
+                continue
+            try:
+                doc = DocxDocument(filepath)
+                paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+                # Also extract table text
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            cell_text = cell.text.strip()
+                            if cell_text:
+                                paragraphs.append(cell_text)
+                text = '\n'.join(paragraphs)
+                if text:
                     docs.append({
-                        'text': content,
-                        'metadata': {
-                            'source': file,
-                            'page': i + 1
-                        }
+                        'text': text,
+                        'metadata': {'source': file, 'page': None}
                     })
+            except Exception as e:
+                print(f"Warning: failed to load DOCX '{file}': {e}", flush=True)
     return docs
 
-print("Loading PDFs...")
-docs = load_all_pdfs_with_metadata()
+
+def index_is_stale(folder=DATA_DIR):
+    """Return True if any source file is newer than the saved FAISS index."""
+    if not os.path.exists(FAISS_INDEX_FILE):
+        return True
+    index_mtime = os.path.getmtime(FAISS_INDEX_FILE)
+    for file in os.listdir(folder):
+        if file.endswith(('.pdf', '.docx')):
+            if os.path.getmtime(os.path.join(folder, file)) > index_mtime:
+                return True
+    return False
+
+
+print("Loading documents...", flush=True)
+docs = load_all_docs_with_metadata()
 total_text_length = sum(len(doc['text']) for doc in docs)
-print(f"Total text length: {total_text_length} characters")
+print(f"Loaded {len(docs)} pages/documents, {total_text_length} characters total", flush=True)
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 chunks = []
 for doc in docs:
     splits = text_splitter.split_text(doc['text'])
     for split in splits:
-        chunks.append({
-            'text': split,
-            'metadata': doc['metadata']
-        })
-print(f"Total chunks: {len(chunks)}")
+        chunks.append({'text': split, 'metadata': doc['metadata']})
+print(f"Total chunks: {len(chunks)}", flush=True)
 
 # ---------------------- Create Embeddings and Vectorstore ----------------------
 # If you change the embedding model, delete the faiss_index folder so it rebuilds (dimension must match).
-print("Creating/loading FAISS index...")
+print("Creating/loading FAISS index...", flush=True)
 embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-faiss_index_dir = "faiss_index"
-faiss_index_file = os.path.join(faiss_index_dir, "index.faiss")
 
-if os.path.exists(faiss_index_file):
-    print("Loading FAISS index from disk...")
-    vectorstore = FAISS.load_local(faiss_index_dir, embeddings, allow_dangerous_deserialization=True)
-else:
-    print("Building FAISS index and saving to disk...")
+if index_is_stale():
+    print("Building FAISS index (new/changed documents detected)...", flush=True)
     texts = [chunk['text'] for chunk in chunks]
     metadatas = [chunk['metadata'] for chunk in chunks]
     vectorstore = FAISS.from_texts(texts, embedding=embeddings, metadatas=metadatas)
-    vectorstore.save_local(faiss_index_dir)
-print("Vectorstore ready!")
+    vectorstore.save_local(FAISS_INDEX_DIR)
+    print("FAISS index built and saved.", flush=True)
+else:
+    print("Loading FAISS index from disk...", flush=True)
+    vectorstore = FAISS.load_local(FAISS_INDEX_DIR, embeddings, allow_dangerous_deserialization=True)
 
-# ---------------------- Setup Chatbot Chain ----------------------
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True,
-    output_key="answer"
-)
-retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-qa_chain = ConversationalRetrievalChain.from_llm(
-    llm=ChatGoogleGenerativeAI(model="models/gemini-2.5-pro", temperature=0),
-    retriever=retriever,
-    memory=memory,
-    return_source_documents=True,
-    get_chat_history=lambda h: h
-)
+print("Vectorstore ready!", flush=True)
+
+retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+
+# ---------------------- Per-user conversation chain ----------------------
+# Each authenticated user gets their own memory so conversations don't bleed across users.
+_user_chains = {}
+
+def get_user_chain(user_email: str):
+    """Return (and lazily create) a per-user ConversationalRetrievalChain."""
+    if user_email not in _user_chains:
+        mem = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True,
+            output_key="answer"
+        )
+        chain = ConversationalRetrievalChain.from_llm(
+            llm=ChatGoogleGenerativeAI(model="models/gemini-2.5-pro", temperature=0),
+            retriever=retriever,
+            memory=mem,
+            return_source_documents=True,
+            get_chat_history=lambda h: h
+        )
+        _user_chains[user_email] = chain
+    return _user_chains[user_email]
+
 
 # ---------------------- Auth (Microsoft Azure AD) ----------------------
 from auth_middleware import require_auth
@@ -100,7 +162,7 @@ from auth_middleware import require_auth
 # ---------------------- API Endpoints ----------------------
 @app.route('/files/<path:filename>')
 def serve_file(filename):
-    return send_from_directory('data', filename)
+    return send_from_directory(DATA_DIR, filename)
 
 @app.route('/api/auth/me', methods=['GET'])
 @require_auth
@@ -112,36 +174,44 @@ def auth_me():
 def chat():
     try:
         data = request.json
+        if not data:
+            return jsonify({'error': 'Request body must be JSON'}), 400
         question = data.get('question', '').strip()
         if not question:
             return jsonify({'error': 'Question is required'}), 400
+        if len(question) > MAX_QUESTION_LENGTH:
+            return jsonify({'error': f'Question too long (max {MAX_QUESTION_LENGTH} characters)'}), 400
 
-        # Pass the question directly to the chain.
-        result = qa_chain({"question": question})
+        user_email = g.user.get('email', 'anonymous')
+        chain = get_user_chain(user_email)
+        result = chain.invoke({"question": question})
         answer = result['answer']
         source_docs = result.get('source_documents', [])
 
-        # Collect sources and format as a list of dictionaries
+        # Strip leading markdown list/heading markers from each line; preserve rest of text.
+        # Only non-empty lines are included.
+        answer_lines = []
+        for line in answer.split('\n'):
+            stripped = re.sub(r'^[-*•#]+\s*', '', line).rstrip()
+            if stripped:
+                answer_lines.append(stripped)
+
+        # Deduplicate sources: unique (file, page) pairs, preserving order
+        seen = set()
         sources = []
         for doc in source_docs:
             meta = doc.metadata if hasattr(doc, 'metadata') else doc.get('metadata', {})
             file = meta.get('source')
             page = meta.get('page')
-            if file:
+            key = (file, page)
+            if file and key not in seen:
+                seen.add(key)
                 link = f"{BASE_URL}/files/{file}#page={page}" if page else f"{BASE_URL}/files/{file}"
-                sources.append({
-                    'file': file,
-                    'page': page,
-                    'link': link
-                })
+                sources.append({'file': file, 'page': page, 'link': link})
 
-        # Split the answer into bullet points for the frontend to format
-        answer_lines = [line.strip('-*• ') for line in answer.split('\n') if line.strip()]
-
-        # Return a structured JSON response
         return jsonify({
-            'response': answer_lines, # A list of strings
-            'sources': sources
+            'response': answer_lines,  # list of strings
+            'sources': sources          # unique source documents (not per-line)
         })
     except Exception as e:
         err_msg = str(e) or f"{type(e).__name__}: (no message)"
