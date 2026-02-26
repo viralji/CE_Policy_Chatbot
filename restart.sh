@@ -6,8 +6,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-BACKEND_PORT=4001
-FRONTEND_PORT=5174
+BACKEND_PORT=${CE_CHATBOT_BACKEND_PORT:-4001}
+FRONTEND_PORT=${CE_CHATBOT_FRONTEND_PORT:-5174}
 
 echo "Stopping existing processes..."
 
@@ -40,14 +40,19 @@ if [ ! -d "venv" ]; then
   exit 1
 fi
 source venv/bin/activate
+source venv/bin/activate
 nohup python3 app.py >> "$SCRIPT_DIR/logs/backend.log" 2>&1 &
 echo $! > "$SCRIPT_DIR/.backend.pid"
 cd "$SCRIPT_DIR"
 
 echo " Starting frontend (port $FRONTEND_PORT)..."
 cd "$SCRIPT_DIR/frontend"
-# Use Next.js dev server for local/restart (no build required)
-PORT=$FRONTEND_PORT nohup npm run dev >> "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
+# Production: use next start when .next exists (after npm run build); else dev server
+if [ -d ".next" ]; then
+  PORT=$FRONTEND_PORT nohup npm run start >> "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
+else
+  PORT=$FRONTEND_PORT nohup npm run dev >> "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
+fi
 echo $! > "$SCRIPT_DIR/.frontend.pid"
 cd "$SCRIPT_DIR"
 
