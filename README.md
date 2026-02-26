@@ -54,10 +54,12 @@ Only users whose email domain matches `ALLOWED_DOMAIN` (e.g. `cloudextel.com`) c
 
 From the **project root**:
 
-| Command        | Purpose |
-|----------------|--------|
-| `./deploy.sh`  | Fresh deploy: `git pull`, backend deps, frontend build, then restart. |
+| Command | Purpose |
+|---------|---------|
+| `./deploy.sh` | Fresh deploy: `git pull`, backend deps, frontend build, then restart. |
 | `./restart.sh` | Restart backend (4001) and frontend (5174) only. |
+| `./scripts/deploy-from-local.sh` | From local: `git push`, then SSH to server and run `deploy-and-verify-on-server.sh`. Set `SERVER=root@host`. |
+| `./scripts/deploy-and-verify-on-server.sh` | On server: git pull, nginx, deploy.sh, health check. |
 
 - Logs: `logs/backend.log`, `logs/frontend.log`.
 - Full details: **[DEPLOY.md](DEPLOY.md)**.
@@ -82,7 +84,7 @@ CE_Policy_Chatbot/
 ├── DEPLOY.md          # deploy/restart details
 ├── deploy.sh          # full deploy script
 ├── restart.sh         # restart backend + frontend
-├── scripts/           # server-deploy.sh for clone/pull + deploy on server
+├── scripts/           # deploy-from-local.sh, deploy-and-verify-on-server.sh, nginx config
 ├── backend/
 │   ├── app.py         # Flask API + RAG
 │   ├── auth_middleware.py

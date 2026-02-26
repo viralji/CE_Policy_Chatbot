@@ -39,31 +39,55 @@ Then use the same frontend port in nginx `proxy_pass` (see below).
 
 ---
 
-## Deploy to server (139.59.72.225) and nginx
+## Deploy to server (same process as CE_DF_Photos)
 
 Other apps may run on the server; this app uses **no new ports**—nginx proxies `chatbot.cloudextel.com` over existing 80/443 to the app on localhost.
 
-### One-command deploy from your machine
+### From your local machine
 
-From the **project root**:
-
-```bash
-chmod +x scripts/deploy-to-server.sh
-./scripts/deploy-to-server.sh
-```
-
-Uses SSH key `-i /home/viral/.ssh/do_139.59.72.225` and `root@139.59.72.225` by default. Override if needed:
+1. Commit and push your code.
+2. Run:
 
 ```bash
-SSH_KEY=/path/to/key SSH_HOST=user@host REMOTE_APP_DIR=/opt/ce-policy-chatbot ./scripts/deploy-to-server.sh
+SERVER=root@139.59.72.225 ./scripts/deploy-from-local.sh
 ```
 
-The script will:
+With SSH key:
 
-1. Clone or pull the repo on the server into `$REMOTE_APP_DIR` (default `/opt/ce-policy-chatbot`)
-2. Copy `scripts/nginx-chatbot.cloudextel.com.conf` to the server and install it under nginx `sites-available` / `sites-enabled`
-3. Run `nginx -t` and `systemctl reload nginx`
-4. Run `./deploy.sh` on the server (deps, build, restart)
+```bash
+SSH_KEY=/home/viral/.ssh/do_139.59.72.225 SERVER=root@139.59.72.225 ./scripts/deploy-from-local.sh
+```
+
+With custom app path:
+
+```bash
+SERVER=root@139.59.72.225 APP_PATH=/opt/ce-policy-chatbot ./scripts/deploy-from-local.sh
+```
+
+This will: `git push`, then SSH to the server and run `./scripts/deploy-and-verify-on-server.sh`.
+
+### On the server (after SSH)
+
+If you SSH manually, run:
+
+```bash
+ssh -i /home/viral/.ssh/do_139.59.72.225 -o IdentitiesOnly=yes root@139.59.72.225
+```
+
+Then on the server:
+
+```bash
+cd /opt/ce-policy-chatbot && ./scripts/deploy-and-verify-on-server.sh
+```
+
+First time: clone the repo first:
+
+```bash
+cd /opt && git clone https://github.com/viralji/CE_Policy_Chatbot.git ce-policy-chatbot
+cd /opt/ce-policy-chatbot && ./scripts/deploy-and-verify-on-server.sh
+```
+
+`deploy-and-verify-on-server.sh` does: git pull, nginx config, `./deploy.sh`, health check.
 
 ### Nginx config (chatbot.cloudextel.com)
 
@@ -94,5 +118,5 @@ Certbot will add HTTPS and redirect HTTP to HTTPS.
 ## Production (chatbot.cloudextel.com) summary
 
 1. Set production env in `backend/.env` and `frontend/.env` (PRODUCTION section).
-2. Run `./deploy.sh` on the server (or use `./scripts/deploy-to-server.sh` from your machine).
+2. Run `./deploy.sh` on the server (or use `./scripts/deploy-from-local.sh` from your machine).
 3. Nginx: `chatbot.cloudextel.com` → `http://127.0.0.1:5174` (no new ports). Run `certbot --nginx -d chatbot.cloudextel.com` for HTTPS.
