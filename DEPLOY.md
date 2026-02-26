@@ -41,7 +41,7 @@ Then use the same frontend port in nginx `proxy_pass` (see below).
 
 ## Deploy to server (same process as CE_DF_Photos)
 
-Other apps may run on the server; this app uses **no new ports**—nginx proxies `policy-assistant.cloudextel.com` over existing 80/443 to the app on localhost.
+Other apps may run on the server; this app uses **no new ports**—nginx proxies `chatbot.cloudextel.com` over existing 80/443 to the app on localhost.
 
 ### From your local machine
 
@@ -61,7 +61,7 @@ SSH_KEY=/home/viral/.ssh/do_139.59.72.225 SERVER=root@139.59.72.225 ./scripts/de
 With custom app path:
 
 ```bash
-SERVER=root@139.59.72.225 APP_PATH=/opt/ce-policy-chatbot ./scripts/deploy-from-local.sh
+SERVER=root@139.59.72.225 APP_PATH=/var/www/ce-policy-chatbot ./scripts/deploy-from-local.sh
 ```
 
 This will: `git push`, then SSH to the server and run `./scripts/deploy-and-verify-on-server.sh`.
@@ -77,23 +77,23 @@ ssh -i /home/viral/.ssh/do_139.59.72.225 -o IdentitiesOnly=yes root@139.59.72.22
 Then on the server:
 
 ```bash
-cd /opt/ce-policy-chatbot && ./scripts/deploy-and-verify-on-server.sh
+cd /var/www/ce-policy-chatbot && ./scripts/deploy-and-verify-on-server.sh
 ```
 
 First time: clone the repo first:
 
 ```bash
-cd /opt && git clone https://github.com/viralji/CE_Policy_Chatbot.git ce-policy-chatbot
-cd /opt/ce-policy-chatbot && ./scripts/deploy-and-verify-on-server.sh
+cd /var/www && git clone https://github.com/viralji/CE_Policy_Chatbot.git ce-policy-chatbot
+cd /var/www/ce-policy-chatbot && ./scripts/deploy-and-verify-on-server.sh
 ```
 
 `deploy-and-verify-on-server.sh` does: git pull, nginx config, `./deploy.sh`, health check.
 
-### Nginx config (policy-assistant.cloudextel.com)
+### Nginx config (chatbot.cloudextel.com)
 
-The file **`scripts/nginx-policy-assistant.cloudextel.com.conf`** contains a single server block:
+The file **`scripts/nginx-chatbot.cloudextel.com.conf`** contains a single server block:
 
-- **server_name** `policy-assistant.cloudextel.com`
+- **server_name** `chatbot.cloudextel.com`
 - **proxy_pass** `http://127.0.0.1:5174` (Next.js). Next.js proxies `/api/chat` and `/api/files` to the Flask backend internally.
 
 If you use different ports (e.g. `CE_CHATBOT_FRONTEND_PORT=5175`), edit the server’s nginx config and set `proxy_pass http://127.0.0.1:5175;`, then reload nginx.
@@ -102,7 +102,7 @@ After the first deploy, enable HTTPS:
 
 ```bash
 # On the server
-certbot --nginx -d policy-assistant.cloudextel.com
+certbot --nginx -d chatbot.cloudextel.com
 ```
 
 Certbot will add HTTPS and redirect HTTP to HTTPS.
@@ -110,13 +110,13 @@ Certbot will add HTTPS and redirect HTTP to HTTPS.
 ### Post-deploy on the server
 
 1. **Env:** In `backend/.env` and `frontend/.env`, uncomment the **PRODUCTION** section and set real values (see `.env.example`). Ensure `INTERNAL_PROXY_SECRET` is the same in both.
-2. **DNS:** Point `policy-assistant.cloudextel.com` to the server IP (e.g. 139.59.72.225).
-3. **Restart** after editing `.env`: `cd /opt/ce-policy-chatbot && ./restart.sh`
+2. **DNS:** Point `chatbot.cloudextel.com` to the server IP (e.g. 139.59.72.225).
+3. **Restart** after editing `.env`: `cd /var/www/ce-policy-chatbot && ./restart.sh`
 
 ---
 
-## Production (policy-assistant.cloudextel.com) summary
+## Production (chatbot.cloudextel.com) summary
 
 1. Set production env in `backend/.env` and `frontend/.env` (PRODUCTION section).
 2. Run `./deploy.sh` on the server (or use `./scripts/deploy-from-local.sh` from your machine).
-3. Nginx: `policy-assistant.cloudextel.com` → `http://127.0.0.1:5174` (no new ports). Run `certbot --nginx -d policy-assistant.cloudextel.com` for HTTPS.
+3. Nginx: `chatbot.cloudextel.com` → `http://127.0.0.1:5174` (no new ports). Run `certbot --nginx -d chatbot.cloudextel.com` for HTTPS.

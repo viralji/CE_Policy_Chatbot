@@ -4,7 +4,7 @@ CloudExtel policy Q&A assistant: RAG over company PDFs (handbook, policies) with
 
 - **Frontend:** Next.js + NextAuth (Azure AD Web; sign-in with Microsoft; only `@cloudextel.com` allowed).
 - **Backend:** Flask + LangChain + Google Gemini (embeddings + chat) + FAISS over **PDFs and DOCX** in `backend/data/`. Chat memory is **per user** (no cross-user bleed). FAISS index rebuilds when source files change.
-- **Production URL:** [https://policy-assistant.cloudextel.com](https://policy-assistant.cloudextel.com)
+- **Production URL:** [https://chatbot.cloudextel.com](https://chatbot.cloudextel.com)
 
 ---
 
@@ -45,7 +45,7 @@ Never commit real `.env` files (they are in `.gitignore`). Use `.env.example` as
 
 Only users whose email domain matches `ALLOWED_DOMAIN` (e.g. `cloudextel.com`) can use the app. Same Azure AD app as CE_DF_Photos (Web platform only).
 
-- **Redirect URIs in Azure:** `http://localhost:5174/api/auth/callback/azure-ad`, `https://policy-assistant.cloudextel.com/api/auth/callback/azure-ad`.
+- **Redirect URIs in Azure:** `http://localhost:5174/api/auth/callback/azure-ad`, `https://chatbot.cloudextel.com/api/auth/callback/azure-ad`.
 - Full details: **[AUTH.md](AUTH.md)**.
 
 ---
@@ -66,11 +66,11 @@ From the **project root**:
 
 ---
 
-## Production (policy-assistant.cloudextel.com)
+## Production (chatbot.cloudextel.com)
 
-1. In **backend/.env**: set `BASE_URL=https://policy-assistant.cloudextel.com` (for “View source” links).
-2. In **frontend/.env**: set `NEXTAUTH_URL=https://policy-assistant.cloudextel.com`, `BACKEND_URL=http://127.0.0.1:4001` (or internal hostname) before `npm run build`.
-3. In **Azure AD**: add Web redirect URI `https://policy-assistant.cloudextel.com/api/auth/callback/azure-ad`.
+1. In **backend/.env**: set `BASE_URL=https://chatbot.cloudextel.com` (for “View source” links).
+2. In **frontend/.env**: set `NEXTAUTH_URL=https://chatbot.cloudextel.com`, `BACKEND_URL=http://127.0.0.1:4001` (or internal hostname) before `npm run build`.
+3. In **Azure AD**: add Web redirect URI `https://chatbot.cloudextel.com/api/auth/callback/azure-ad`.
 4. On the server, run `./deploy.sh` then `./restart.sh`; point your reverse proxy at the Next.js app (e.g. `http://127.0.0.1:5174`). Next.js proxies `/api/chat` and `/api/files` to the Flask backend.
 
 ---

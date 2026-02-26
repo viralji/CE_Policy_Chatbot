@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Run this ON the server (e.g. after SSH). Deploys code, nginx, restarts app, health check.
-# Usage: cd /opt/ce-policy-chatbot && ./scripts/deploy-and-verify-on-server.sh
+# Usage: cd /var/www/ce-policy-chatbot && ./scripts/deploy-and-verify-on-server.sh
 # Or:    cd /path/to/CE_Policy_Chatbot && APP_PORT=5174 ./scripts/deploy-and-verify-on-server.sh
 # See README.md and DEPLOY.md for full docs.
 set -e
 APP_DIR="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$APP_DIR"
 APP_PORT="${APP_PORT:-5174}"
-SITE="policy-assistant.cloudextel.com"
+SITE="chatbot.cloudextel.com"
 
 echo "=== Deploy in $APP_DIR (health check port: $APP_PORT) ==="
 [ -f deploy.sh ] || { echo "Missing deploy.sh"; exit 1; }
