@@ -15,7 +15,7 @@ Use the **same** Azure AD app as CE_DF_Photos. Configure **Web** platform only (
 2. **Authentication** → **Web** (add platform if needed).
 3. Under **Redirect URIs**, add:
    - **Local:** `http://localhost:5174/api/auth/callback/azure-ad`
-   - **Production:** `https://chatbot.cloudextel.com/api/auth/callback/azure-ad`
+   - **Production:** `https://policy-assistant.cloudextel.com/api/auth/callback/azure-ad`
 
 Do not use the SPA redirect URIs for this app; NextAuth uses the Web callback.
 
@@ -33,20 +33,20 @@ If **both** `AZURE_AD_TENANT_ID` and `AZURE_AD_CLIENT_ID` are missing, the backe
 
 ### Frontend (`frontend/.env`)
 
-- `NEXTAUTH_URL` – Full URL of the app (e.g. `http://localhost:5174`, or `https://chatbot.cloudextel.com` in prod).
+- `NEXTAUTH_URL` – Full URL of the app (e.g. `http://localhost:5174`, or `https://policy-assistant.cloudextel.com` in prod).
 - `NEXTAUTH_SECRET` – Random string for signing session cookies.
 - `AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, `AZURE_AD_TENANT_ID` – Azure AD Web app credentials.
 - `ALLOWED_DOMAIN` – Same as backend (e.g. `cloudextel.com`).
 - `BACKEND_URL` – Flask backend URL (e.g. `http://127.0.0.1:4001`).
 - `INTERNAL_PROXY_SECRET` – Same value as in `backend/.env`.
 
-## Production (chatbot.cloudextel.com)
+## Production (policy-assistant.cloudextel.com)
 
-**URL:** `https://chatbot.cloudextel.com`
+**URL:** `https://policy-assistant.cloudextel.com`
 
-- **Azure AD:** Add Web redirect URI `https://chatbot.cloudextel.com/api/auth/callback/azure-ad` (see above).
-- **Frontend:** Set `NEXTAUTH_URL=https://chatbot.cloudextel.com` and `BACKEND_URL=http://127.0.0.1:4001` (or internal hostname) before `npm run build`.
-- **Backend:** Set `BASE_URL=https://chatbot.cloudextel.com` so “View source” links in chat point to the correct host. Set `PORT` as needed (e.g. 4001 behind the proxy). Set `INTERNAL_PROXY_SECRET` to match frontend.
+- **Azure AD:** Add Web redirect URI `https://policy-assistant.cloudextel.com/api/auth/callback/azure-ad` (see above).
+- **Frontend:** Set `NEXTAUTH_URL=https://policy-assistant.cloudextel.com` and `BACKEND_URL=http://127.0.0.1:4001` (or internal hostname) before `npm run build`.
+- **Backend:** Set `BASE_URL=https://policy-assistant.cloudextel.com` so “View source” links in chat point to the correct host. Set `PORT` as needed (e.g. 4001 behind the proxy). Set `INTERNAL_PROXY_SECRET` to match frontend.
 
 ## Testing
 

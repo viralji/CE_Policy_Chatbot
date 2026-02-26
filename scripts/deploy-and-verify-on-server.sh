@@ -7,7 +7,7 @@ set -e
 APP_DIR="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$APP_DIR"
 APP_PORT="${APP_PORT:-5174}"
-SITE="chatbot.cloudextel.com"
+SITE="policy-assistant.cloudextel.com"
 
 echo "=== Deploy in $APP_DIR (health check port: $APP_PORT) ==="
 [ -f deploy.sh ] || { echo "Missing deploy.sh"; exit 1; }

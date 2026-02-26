@@ -18,4 +18,4 @@ git push
 echo "=== Deploying on server $SERVER (path: $APP_PATH, health check port: $APP_PORT) ==="
 ssh "${SSH_OPTS[@]}" "$SERVER" "cd $APP_PATH && APP_PORT=$APP_PORT ./scripts/deploy-and-verify-on-server.sh"
 
-echo "=== Deploy finished. Check https://chatbot.cloudextel.com ==="
+echo "=== Deploy finished. Check https://policy-assistant.cloudextel.com ==="
