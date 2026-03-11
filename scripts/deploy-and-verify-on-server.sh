@@ -20,7 +20,11 @@ NGINX_CONF="$APP_DIR/scripts/nginx-$SITE.conf"
 if [ -f "$NGINX_CONF" ]; then
   cp "$NGINX_CONF" /etc/nginx/sites-available/$SITE.conf 2>/dev/null || cp "$NGINX_CONF" /etc/nginx/conf.d/$SITE.conf 2>/dev/null || true
   [ -d /etc/nginx/sites-enabled ] && ln -sf /etc/nginx/sites-available/$SITE.conf /etc/nginx/sites-enabled/ 2>/dev/null || true
-  nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || echo "○ nginx reload skipped"
+  if nginx -t 2>/dev/null; then
+    systemctl reload nginx 2>/dev/null || systemctl start nginx 2>/dev/null || echo "○ nginx reload/start skipped"
+  else
+    echo "○ nginx config test failed"
+  fi
 else
   echo "○ No $NGINX_CONF"
 fi
