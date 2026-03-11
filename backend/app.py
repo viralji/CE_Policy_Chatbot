@@ -12,8 +12,12 @@ except ImportError:
     from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
+try:
+    from langchain_classic.chains import ConversationalRetrievalChain
+    from langchain_classic.memory import ConversationBufferMemory
+except ImportError:
+    from langchain.chains import ConversationalRetrievalChain
+    from langchain.memory import ConversationBufferMemory
 import google.generativeai as genai
 
 try:
