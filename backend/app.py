@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import traceback
 from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
@@ -89,9 +90,18 @@ def load_all_docs_with_metadata(folder=DATA_DIR):
 
 
 def index_is_stale(folder=DATA_DIR):
-    """Return True if any source file is newer than the saved FAISS index."""
+    """Return True if any source file is newer than the saved FAISS index, or if embedding model changed."""
+    model_file = os.path.join(FAISS_INDEX_DIR, ".embedding_model")
     if not os.path.exists(FAISS_INDEX_FILE):
         return True
+    # Rebuild if embedding model changed (or unknown model from before we tracked it)
+    if not os.path.exists(model_file):
+        print("No .embedding_model file, rebuilding index...", flush=True)
+        return True
+    with open(model_file) as f:
+        if f.read().strip() != EMBEDDING_MODEL:
+            print(f"Embedding model changed, rebuilding index...", flush=True)
+            return True
     index_mtime = os.path.getmtime(FAISS_INDEX_FILE)
     for file in os.listdir(folder):
         if file.endswith(('.pdf', '.docx')):
@@ -115,8 +125,10 @@ print(f"Total chunks: {len(chunks)}", flush=True)
 
 # ---------------------- Create Embeddings and Vectorstore ----------------------
 # If you change the embedding model, delete the faiss_index folder so it rebuilds (dimension must match).
-print("Creating/loading FAISS index...", flush=True)
-embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+# models/text-embedding-004 is more stable if gemini-embedding-001 returns 500 errors.
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
+print(f"Creating/loading FAISS index (embedding: {EMBEDDING_MODEL})...", flush=True)
+embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
 
 if index_is_stale():
     print("Building FAISS index (new/changed documents detected)...", flush=True)
@@ -124,6 +136,8 @@ if index_is_stale():
     metadatas = [chunk['metadata'] for chunk in chunks]
     vectorstore = FAISS.from_texts(texts, embedding=embeddings, metadatas=metadatas)
     vectorstore.save_local(FAISS_INDEX_DIR)
+    with open(os.path.join(FAISS_INDEX_DIR, ".embedding_model"), "w") as f:
+        f.write(EMBEDDING_MODEL)
     print("FAISS index built and saved.", flush=True)
 else:
     print("Loading FAISS index from disk...", flush=True)
@@ -184,7 +198,23 @@ def chat():
 
         user_email = g.user.get('email', 'anonymous')
         chain = get_user_chain(user_email)
-        result = chain.invoke({"question": question})
+
+        # Retry on Google API 500 errors (transient)
+        max_retries = 3
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                result = chain.invoke({"question": question})
+                break
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                if ("500" in err_str or "internal" in err_str or "embedding" in err_str) and attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    print(f"Google API error (attempt {attempt + 1}/{max_retries}), retrying in {wait}s: {e}", flush=True)
+                    time.sleep(wait)
+                else:
+                    raise
         answer = result['answer']
         source_docs = result.get('source_documents', [])
 
