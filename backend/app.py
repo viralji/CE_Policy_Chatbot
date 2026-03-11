@@ -6,7 +6,10 @@ from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except ImportError:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
@@ -22,13 +25,13 @@ except ImportError:
 
 # ---------------------- Load API key and config from .env ----------------------
 load_dotenv()
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 BACKEND_PORT = int(os.getenv("PORT", "4001"))
 BASE_URL = os.getenv("BASE_URL", f"http://localhost:{BACKEND_PORT}")
 MAX_QUESTION_LENGTH = 2000
 
 if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY not found in .env file")
+    raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY not found in .env file")
 
 os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -246,6 +249,9 @@ def chat():
     except Exception as e:
         err_msg = str(e) or f"{type(e).__name__}: (no message)"
         print(traceback.format_exc(), flush=True)
+        # Add hint for common Google API 500
+        if "500" in err_msg and "embedding" in err_msg.lower():
+            err_msg += " Check GOOGLE_API_KEY quota and billing at https://aistudio.google.com"
         return jsonify({'error': err_msg}), 500
 
 @app.route('/api/health', methods=['GET'])
