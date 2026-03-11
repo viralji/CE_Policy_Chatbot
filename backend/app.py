@@ -132,8 +132,8 @@ print(f"Total chunks: {len(chunks)}", flush=True)
 
 # ---------------------- Create Embeddings and Vectorstore ----------------------
 # If you change the embedding model, delete the faiss_index folder so it rebuilds (dimension must match).
-# models/text-embedding-004 is more stable if gemini-embedding-001 returns 500 errors.
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
+# models/gemini-embedding-001 (text-embedding-004 not available in v1beta)
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-001")
 print(f"Creating/loading FAISS index (embedding: {EMBEDDING_MODEL})...", flush=True)
 embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
 
