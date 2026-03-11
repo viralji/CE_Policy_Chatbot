@@ -39,9 +39,7 @@ if [ ! -d "venv" ]; then
   echo "Error: backend/venv not found. Run deploy.sh first."
   exit 1
 fi
-source venv/bin/activate
-source venv/bin/activate
-nohup python3 app.py >> "$SCRIPT_DIR/logs/backend.log" 2>&1 &
+nohup "$SCRIPT_DIR/backend/venv/bin/python" app.py >> "$SCRIPT_DIR/logs/backend.log" 2>&1 &
 echo $! > "$SCRIPT_DIR/.backend.pid"
 cd "$SCRIPT_DIR"
 
