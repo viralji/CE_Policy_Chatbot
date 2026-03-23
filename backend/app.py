@@ -2,6 +2,7 @@ import os
 import re
 import time
 import traceback
+from collections import OrderedDict
 from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -141,7 +142,22 @@ if index_is_stale():
     print("Building FAISS index (new/changed documents detected)...", flush=True)
     texts = [chunk['text'] for chunk in chunks]
     metadatas = [chunk['metadata'] for chunk in chunks]
-    vectorstore = FAISS.from_texts(texts, embedding=embeddings, metadatas=metadatas)
+    # Retry the embedding API call at startup — a transient 500 must not crash the server.
+    _build_retries = 5
+    for _attempt in range(_build_retries):
+        try:
+            vectorstore = FAISS.from_texts(texts, embedding=embeddings, metadatas=metadatas)
+            break
+        except Exception as _e:
+            _err = str(_e).lower()
+            if any(kw in _err for kw in ("500", "internal", "embedding", "429", "quota", "rate", "overloaded")) \
+                    and _attempt < _build_retries - 1:
+                _wait = 2 * (2 ** _attempt)
+                print(f"Embedding API error during index build (attempt {_attempt + 1}/{_build_retries}), "
+                      f"retrying in {_wait}s: {_e}", flush=True)
+                time.sleep(_wait)
+            else:
+                raise
     vectorstore.save_local(FAISS_INDEX_DIR)
     with open(os.path.join(FAISS_INDEX_DIR, ".embedding_model"), "w") as f:
         f.write(EMBEDDING_MODEL)
@@ -156,25 +172,36 @@ retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 
 # ---------------------- Per-user conversation chain ----------------------
 # Each authenticated user gets their own memory so conversations don't bleed across users.
-_user_chains = {}
+# OrderedDict enables simple LRU eviction to cap memory when many users connect.
+_user_chains: OrderedDict = OrderedDict()
+MAX_USER_CHAINS = 200
+
 
 def get_user_chain(user_email: str):
-    """Return (and lazily create) a per-user ConversationalRetrievalChain."""
-    if user_email not in _user_chains:
-        mem = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True,
-            output_key="answer"
-        )
-        chain = ConversationalRetrievalChain.from_llm(
-            llm=ChatGoogleGenerativeAI(model="models/gemini-2.5-pro", temperature=0),
-            retriever=retriever,
-            memory=mem,
-            return_source_documents=True,
-            get_chat_history=lambda h: h
-        )
-        _user_chains[user_email] = chain
-    return _user_chains[user_email]
+    """Return (and lazily create) a per-user ConversationalRetrievalChain with LRU eviction."""
+    if user_email in _user_chains:
+        _user_chains.move_to_end(user_email)
+        return _user_chains[user_email]
+
+    if len(_user_chains) >= MAX_USER_CHAINS:
+        evicted = next(iter(_user_chains))
+        del _user_chains[evicted]
+        print(f"Evicted oldest user chain: {evicted}", flush=True)
+
+    mem = ConversationBufferMemory(
+        memory_key="chat_history",
+        return_messages=True,
+        output_key="answer"
+    )
+    chain = ConversationalRetrievalChain.from_llm(
+        llm=ChatGoogleGenerativeAI(model="models/gemini-2.5-pro", temperature=0),
+        retriever=retriever,
+        memory=mem,
+        return_source_documents=True,
+        get_chat_history=lambda h: h
+    )
+    _user_chains[user_email] = chain
+    return chain
 
 
 # ---------------------- Auth (Microsoft Azure AD) ----------------------
@@ -206,8 +233,8 @@ def chat():
         user_email = g.user.get('email', 'anonymous')
         chain = get_user_chain(user_email)
 
-        # Retry on Google API 500 errors (transient)
-        max_retries = 3
+        # Retry on transient Google API errors (500 internal, 429 quota/rate-limit)
+        max_retries = 5
         last_error = None
         for attempt in range(max_retries):
             try:
@@ -216,8 +243,11 @@ def chat():
             except Exception as e:
                 last_error = e
                 err_str = str(e).lower()
-                if ("500" in err_str or "internal" in err_str or "embedding" in err_str) and attempt < max_retries - 1:
-                    wait = 2 ** attempt
+                is_retryable = any(kw in err_str for kw in (
+                    "500", "internal", "embedding", "429", "quota", "rate", "overloaded",
+                ))
+                if is_retryable and attempt < max_retries - 1:
+                    wait = 2 * (2 ** attempt)  # 2, 4, 8, 16 s
                     print(f"Google API error (attempt {attempt + 1}/{max_retries}), retrying in {wait}s: {e}", flush=True)
                     time.sleep(wait)
                 else:
@@ -251,11 +281,18 @@ def chat():
             'sources': sources          # unique source documents (not per-line)
         })
     except Exception as e:
-        err_msg = str(e) or f"{type(e).__name__}: (no message)"
+        raw = str(e) or f"{type(e).__name__}: (no message)"
         print(traceback.format_exc(), flush=True)
-        # Add hint for common Google API 500
-        if "500" in err_msg and "embedding" in err_msg.lower():
-            err_msg += " Check GOOGLE_API_KEY quota and billing at https://aistudio.google.com"
+        # Return a user-friendly message; log full details server-side only.
+        raw_lower = raw.lower()
+        if any(kw in raw_lower for kw in ("429", "quota", "rate limit", "resource_exhausted")):
+            err_msg = "The AI service is currently rate-limited or quota-exceeded. Please wait a moment and try again. (Check your Google AI quota at https://aistudio.google.com)"
+        elif any(kw in raw_lower for kw in ("500", "internal", "embedding", "overloaded")):
+            err_msg = "The AI service returned a temporary error. Please try again in a few seconds."
+        elif "expired" in raw_lower or "token" in raw_lower:
+            err_msg = "Your session may have expired. Please refresh the page and sign in again."
+        else:
+            err_msg = "An unexpected error occurred. Please try again."
         return jsonify({'error': err_msg}), 500
 
 @app.route('/api/health', methods=['GET'])

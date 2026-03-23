@@ -26,6 +26,7 @@ for port in $BACKEND_PORT $FRONTEND_PORT; do
 done
 
 # Fallback: kill by process name
+pkill -f "gunicorn.*app:app" 2>/dev/null || true
 pkill -f "python.*app.py" 2>/dev/null || true
 pkill -f "next start" 2>/dev/null || true
 pkill -f "next dev" 2>/dev/null || true
@@ -39,7 +40,16 @@ if [ ! -d "venv" ]; then
   echo "Error: backend/venv not found. Run deploy.sh first."
   exit 1
 fi
-nohup "$SCRIPT_DIR/backend/venv/bin/python" app.py >> "$SCRIPT_DIR/logs/backend.log" 2>&1 &
+# Use gunicorn (1 worker, 4 threads) for concurrent request handling without splitting in-memory state.
+# Timeout 120s matches the LLM call limit; --access-logfile logs every request.
+nohup "$SCRIPT_DIR/backend/venv/bin/gunicorn" \
+  --workers 1 \
+  --worker-class gthread \
+  --threads 4 \
+  --timeout 120 \
+  --bind "0.0.0.0:$BACKEND_PORT" \
+  --access-logfile "$SCRIPT_DIR/logs/backend-access.log" \
+  app:app >> "$SCRIPT_DIR/logs/backend.log" 2>&1 &
 echo $! > "$SCRIPT_DIR/.backend.pid"
 cd "$SCRIPT_DIR"
 

@@ -15,6 +15,10 @@ try:
 except ImportError:
     JWT_AVAILABLE = False
 
+# Module-level JWKS client cache — reused across requests so we don't hit Microsoft's JWKS
+# endpoint on every API call. PyJWKClient internally caches keys for 300 s by default.
+_jwks_clients: dict = {}
+
 
 def get_allowed_domain():
     return (os.getenv("ALLOWED_DOMAIN") or "cloudextel.com").strip().lower()
@@ -39,8 +43,10 @@ def validate_azure_id_token(token: str):
         return None, "Auth not configured (AZURE_AD_TENANT_ID, AZURE_AD_CLIENT_ID)"
 
     try:
-        jwks_uri = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
-        jwks_client = PyJWKClient(jwks_uri)
+        if tenant_id not in _jwks_clients:
+            jwks_uri = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
+            _jwks_clients[tenant_id] = PyJWKClient(jwks_uri, cache_jwk_set=True, lifespan=300)
+        jwks_client = _jwks_clients[tenant_id]
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,

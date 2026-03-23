@@ -24,6 +24,10 @@ export async function POST(request: Request) {
     : 'dev@local';
   const name = session?.user?.name ?? email;
 
+  const controller = new AbortController();
+  // 100 s timeout — Gemini 2.5 Pro with thinking can take up to ~90 s
+  const timeoutId = setTimeout(() => controller.abort(), 100_000);
+
   try {
     const body = await request.text();
     const res = await fetch(`${BACKEND_URL}/api/chat`, {
@@ -35,15 +39,25 @@ export async function POST(request: Request) {
         'X-User-Name': name,
       },
       body,
+      signal: controller.signal,
     });
 
     const data = await res.json().catch(() => ({}));
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.error('Backend request timed out');
+      return NextResponse.json(
+        { error: 'The request timed out. The AI may be busy — please try again.' },
+        { status: 504 }
+      );
+    }
     console.error('Proxy to backend failed:', err);
     return NextResponse.json(
-      { error: 'Failed to reach backend' },
+      { error: 'Failed to reach backend. Please try again.' },
       { status: 502 }
     );
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

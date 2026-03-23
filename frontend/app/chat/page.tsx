@@ -187,7 +187,7 @@ export default function ChatPage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 13, color: '#999', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {devBypass ? 'Dev User' : ((session!.user as { email?: string }).email ?? session!.user?.name ?? 'User')}
+            {devBypass ? 'Dev User' : ((session?.user as { email?: string } | undefined)?.email ?? session?.user?.name ?? 'User')}
           </span>
           <button
             type="button"
