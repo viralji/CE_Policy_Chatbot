@@ -19,7 +19,6 @@ try:
 except ImportError:
     from langchain.chains import ConversationalRetrievalChain
     from langchain.memory import ConversationBufferMemory
-import google.generativeai as genai
 
 try:
     from docx import Document as DocxDocument
@@ -39,7 +38,6 @@ if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY not found in .env file")
 
 os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
-genai.configure(api_key=GOOGLE_API_KEY)
 
 # ---------------------- Flask App Setup ----------------------
 app = Flask(__name__)

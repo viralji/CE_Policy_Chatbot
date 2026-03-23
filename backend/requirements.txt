@@ -10,7 +10,6 @@ langchain-text-splitters
 langchain-google-genai
 langchain-community
 faiss-cpu
-google-generativeai
 PyJWT
 cryptography
 requests
