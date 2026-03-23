@@ -13,12 +13,7 @@ except ImportError:
     from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
-try:
-    from langchain_classic.chains import ConversationalRetrievalChain
-    from langchain_classic.memory import ConversationBufferMemory
-except ImportError:
-    from langchain.chains import ConversationalRetrievalChain
-    from langchain.memory import ConversationBufferMemory
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 try:
     from docx import Document as DocxDocument
@@ -130,9 +125,9 @@ for doc in docs:
 print(f"Total chunks: {len(chunks)}", flush=True)
 
 # ---------------------- Create Embeddings and Vectorstore ----------------------
-# If you change the embedding model, delete the faiss_index folder so it rebuilds (dimension must match).
-# models/gemini-embedding-001 (text-embedding-004 not available in v1beta)
+# models/gemini-embedding-001 is the supported model in v1beta API used by langchain-google-genai
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-001")
+LLM_MODEL = os.getenv("LLM_MODEL", "models/gemini-2.5-pro")
 print(f"Creating/loading FAISS index (embedding: {EMBEDDING_MODEL})...", flush=True)
 embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
 
@@ -167,39 +162,53 @@ else:
 print("Vectorstore ready!", flush=True)
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+llm = ChatGoogleGenerativeAI(model=LLM_MODEL, temperature=0)
+print(f"LLM ready ({LLM_MODEL})!", flush=True)
 
-# ---------------------- Per-user conversation chain ----------------------
-# Each authenticated user gets their own memory so conversations don't bleed across users.
-# OrderedDict enables simple LRU eviction to cap memory when many users connect.
-_user_chains: OrderedDict = OrderedDict()
-MAX_USER_CHAINS = 200
+# ---------------------- System prompt for RAG ----------------------
+_SYSTEM_PROMPT = (
+    "You are CloudExtel's HR policy assistant. Answer questions using only the "
+    "company policy information provided below. Be specific and cite relevant details.\n\n"
+    "If the answer is not found in the provided context, say: "
+    "\"I don't have information about that in the company policies. Please contact HR directly.\"\n\n"
+    "Company Policy Context:\n{context}"
+)
+
+# ---------------------- Per-user conversation history ----------------------
+# Each user gets a list of {human, ai} dicts. LRU eviction keeps memory bounded.
+_user_histories: OrderedDict = OrderedDict()
+MAX_USER_HISTORIES = 200
+MAX_HISTORY_TURNS = 10   # Keep last 10 Q&A pairs per user
 
 
-def get_user_chain(user_email: str):
-    """Return (and lazily create) a per-user ConversationalRetrievalChain with LRU eviction."""
-    if user_email in _user_chains:
-        _user_chains.move_to_end(user_email)
-        return _user_chains[user_email]
+def get_user_history(user_email: str) -> list:
+    """Return (and lazily create) per-user conversation history with LRU eviction."""
+    if user_email in _user_histories:
+        _user_histories.move_to_end(user_email)
+        return _user_histories[user_email]
+    if len(_user_histories) >= MAX_USER_HISTORIES:
+        evicted = next(iter(_user_histories))
+        del _user_histories[evicted]
+        print(f"Evicted oldest user history: {evicted}", flush=True)
+    _user_histories[user_email] = []
+    return _user_histories[user_email]
 
-    if len(_user_chains) >= MAX_USER_CHAINS:
-        evicted = next(iter(_user_chains))
-        del _user_chains[evicted]
-        print(f"Evicted oldest user chain: {evicted}", flush=True)
 
-    mem = ConversationBufferMemory(
-        memory_key="chat_history",
-        return_messages=True,
-        output_key="answer"
-    )
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=ChatGoogleGenerativeAI(model="models/gemini-2.5-pro", temperature=0),
-        retriever=retriever,
-        memory=mem,
-        return_source_documents=True,
-        get_chat_history=lambda h: h
-    )
-    _user_chains[user_email] = chain
-    return chain
+def _retry(fn, *args, label="API call"):
+    """Call fn(*args) with up to 5 retries on transient Google errors."""
+    _RETRYABLE = ("500", "internal", "embedding", "429", "quota", "rate", "overloaded")
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            return fn(*args)
+        except Exception as e:
+            err_str = str(e).lower()
+            if any(kw in err_str for kw in _RETRYABLE) and attempt < max_retries - 1:
+                wait = 2 * (2 ** attempt)   # 2, 4, 8, 16 s
+                print(f"{label} error (attempt {attempt + 1}/{max_retries}), retrying in {wait}s: {e}", flush=True)
+                time.sleep(wait)
+            else:
+                raise
 
 
 # ---------------------- Auth (Microsoft Azure AD) ----------------------
@@ -229,32 +238,27 @@ def chat():
             return jsonify({'error': f'Question too long (max {MAX_QUESTION_LENGTH} characters)'}), 400
 
         user_email = g.user.get('email', 'anonymous')
-        chain = get_user_chain(user_email)
+        history = get_user_history(user_email)
 
-        # Retry on transient Google API errors (500 internal, 429 quota/rate-limit)
-        max_retries = 5
-        last_error = None
-        for attempt in range(max_retries):
-            try:
-                result = chain.invoke({"question": question})
-                break
-            except Exception as e:
-                last_error = e
-                err_str = str(e).lower()
-                is_retryable = any(kw in err_str for kw in (
-                    "500", "internal", "embedding", "429", "quota", "rate", "overloaded",
-                ))
-                if is_retryable and attempt < max_retries - 1:
-                    wait = 2 * (2 ** attempt)  # 2, 4, 8, 16 s
-                    print(f"Google API error (attempt {attempt + 1}/{max_retries}), retrying in {wait}s: {e}", flush=True)
-                    time.sleep(wait)
-                else:
-                    raise
-        answer = result['answer']
-        source_docs = result.get('source_documents', [])
+        # Step 1: Retrieve relevant docs (embedding call — isolated for independent retry)
+        source_docs = _retry(retriever.invoke, question, label="Embedding/retrieval")
 
-        # Strip leading markdown list/heading markers from each line; preserve rest of text.
-        # Only non-empty lines are included.
+        # Step 2: Build prompt — history + retrieved context + question
+        context = "\n\n".join(doc.page_content for doc in source_docs)
+        messages = [SystemMessage(content=_SYSTEM_PROMPT.format(context=context))]
+        for turn in history[-MAX_HISTORY_TURNS:]:
+            messages.append(HumanMessage(content=turn['human']))
+            messages.append(AIMessage(content=turn['ai']))
+        messages.append(HumanMessage(content=question))
+
+        # Step 3: LLM call (independent retry from embedding)
+        response = _retry(llm.invoke, messages, label="LLM")
+        answer = response.content
+
+        # Persist this exchange in history
+        history.append({'human': question, 'ai': answer})
+
+        # Format answer: strip leading markdown markers, keep non-empty lines
         answer_lines = []
         for line in answer.split('\n'):
             stripped = re.sub(r'^[-*•#]+\s*', '', line).rstrip()
@@ -275,16 +279,15 @@ def chat():
                 sources.append({'file': file, 'page': page, 'link': link})
 
         return jsonify({
-            'response': answer_lines,  # list of strings
-            'sources': sources          # unique source documents (not per-line)
+            'response': answer_lines,
+            'sources': sources
         })
     except Exception as e:
         raw = str(e) or f"{type(e).__name__}: (no message)"
         print(traceback.format_exc(), flush=True)
-        # Return a user-friendly message; log full details server-side only.
         raw_lower = raw.lower()
         if any(kw in raw_lower for kw in ("429", "quota", "rate limit", "resource_exhausted")):
-            err_msg = "The AI service is currently rate-limited or quota-exceeded. Please wait a moment and try again. (Check your Google AI quota at https://aistudio.google.com)"
+            err_msg = "The AI service is currently rate-limited. Please wait a moment and try again."
         elif any(kw in raw_lower for kw in ("500", "internal", "embedding", "overloaded")):
             err_msg = "The AI service returned a temporary error. Please try again in a few seconds."
         elif "expired" in raw_lower or "token" in raw_lower:
