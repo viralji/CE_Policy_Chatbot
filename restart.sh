@@ -40,12 +40,11 @@ if [ ! -d "venv" ]; then
   echo "Error: backend/venv not found. Run deploy.sh first."
   exit 1
 fi
-# Use gunicorn (1 worker, 4 threads) for concurrent request handling without splitting in-memory state.
+# Use gunicorn sync worker — gthread workers deadlock when forked after preloading.
 # Timeout 120s matches the LLM call limit; --access-logfile logs every request.
 nohup "$SCRIPT_DIR/backend/venv/bin/gunicorn" \
   --workers 1 \
-  --worker-class gthread \
-  --threads 4 \
+  --worker-class sync \
   --timeout 120 \
   --bind "0.0.0.0:$BACKEND_PORT" \
   --access-logfile "$SCRIPT_DIR/logs/backend-access.log" \
