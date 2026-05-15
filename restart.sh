@@ -14,7 +14,7 @@ echo "Stopping existing processes..."
 # Kill listeners on app ports (fuser + lsof — stale next-server often survives npm-only kills)
 for port in $BACKEND_PORT $FRONTEND_PORT; do
   if command -v fuser &>/dev/null; then
-    fuser -k -n tcp "$port" 2>/dev/null || true
+    fuser -k "${port}/tcp" 2>/dev/null || true
   fi
   if command -v lsof &>/dev/null; then
     for pid in $(lsof -ti ":$port" 2>/dev/null); do
