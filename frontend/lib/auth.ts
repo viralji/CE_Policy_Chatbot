@@ -4,6 +4,7 @@ import AzureADProvider from "next-auth/providers/azure-ad";
 const allowedDomain = (process.env.ALLOWED_DOMAIN || "cloudextel.com").toLowerCase();
 
 export const authOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     AzureADProvider({
       clientId: process.env.AZURE_AD_CLIENT_ID as string,

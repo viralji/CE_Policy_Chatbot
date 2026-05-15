@@ -27,7 +27,14 @@ export default function HomePage() {
   }
 
   if (session?.user) {
-    return null;
+    // Never return null — mobile Safari can show a white screen while replace() runs.
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', color: '#fff' }}>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ color: '#888', fontSize: 14 }}>Opening chat…</p>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, User, Send, LogOut } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { FormattedBotMessage } from '@/components/FormattedBotMessage';
 
 type Message = {
   id: number;
@@ -157,8 +158,9 @@ export default function ChatPage() {
   return (
     <div
       style={{
-        height: '100vh',
-        width: '100vw',
+        minHeight: '100vh',
+        width: '100%',
+        maxWidth: '100%',
         backgroundColor: '#000',
         color: '#fff',
         display: 'flex',
@@ -259,19 +261,17 @@ export default function ChatPage() {
                   }}
                 >
                   {message.sender === 'bot' && Array.isArray(message.text) ? (
-                    <div>
-                      <ul style={{ margin: 0, paddingLeft: '1.2em' }}>
-                        {message.text.map((point, i) => (
-                          <li key={i}>{point}</li>
-                        ))}
-                      </ul>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {message.text.map((point, i) => (
+                        <FormattedBotMessage key={i} content={String(point)} />
+                      ))}
                       {message.sources && message.sources.length > 0 && (
-                        <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #333', fontSize: 12, color: '#888' }}>
-                          <span style={{ fontWeight: 600, color: '#aaa' }}>Sources: </span>
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #333', fontSize: 12, color: '#888' }}>
+                          <span style={{ fontWeight: 600, color: '#94a3b8' }}>Sources </span>
                           {message.sources.map((src, i) => (
                             <span key={i}>
                               {i > 0 && <span style={{ margin: '0 4px' }}>·</span>}
-                              <a href={src.link} target="_blank" rel="noopener noreferrer" style={{ color: '#63b2f6', textDecoration: 'underline' }}>
+                              <a href={src.link} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>
                                 {src.file}{src.page ? ` p.${src.page}` : ''}
                               </a>
                             </span>
@@ -279,6 +279,8 @@ export default function ChatPage() {
                         </div>
                       )}
                     </div>
+                  ) : message.sender === 'bot' ? (
+                    <FormattedBotMessage content={String(message.text)} />
                   ) : (
                     String(message.text)
                   )}
