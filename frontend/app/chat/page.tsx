@@ -156,122 +156,57 @@ export default function ChatPage() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        width: '100%',
-        maxWidth: '100%',
-        backgroundColor: '#000',
-        color: '#fff',
-        display: 'flex',
-        flexDirection: 'column',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-      }}
-    >
-      <header
-        style={{
-          backgroundColor: '#111',
-          borderBottom: '1px solid #333',
-          padding: '16px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 32, height: 32, backgroundColor: '#3b82f6', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Bot size={20} color="#fff" />
+    <div className="chat-root">
+      <header className="chat-header">
+        <div className="chat-header-brand">
+          <div className="chat-avatar chat-avatar--bot" aria-hidden>
+            <Bot size={18} color="#fff" />
           </div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>CloudExtel Assistant</h1>
+          <h1 className="chat-header-title">CloudExtel Assistant</h1>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: '#999', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div className="chat-header-actions">
+          <span className="chat-header-email" title={devBypass ? 'Dev User' : ((session?.user as { email?: string } | undefined)?.email ?? session?.user?.name ?? 'User')}>
             {devBypass ? 'Dev User' : ((session?.user as { email?: string } | undefined)?.email ?? session?.user?.name ?? 'User')}
           </span>
           <button
             type="button"
             onClick={handleLogout}
             title="Sign out"
-            style={{
-              width: 36,
-              height: 36,
-              backgroundColor: 'transparent',
-              border: '1px solid #444',
-              borderRadius: 8,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: '#999',
-            }}
+            className="chat-logout-btn"
+            aria-label="Sign out"
           >
-            <LogOut size={18} />
+            <LogOut size={20} />
           </button>
         </div>
       </header>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24, backgroundColor: '#000' }}>
-        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+      <div className="chat-log">
+        <div className="chat-log-inner">
           {messages.map((message) => (
             <div
               key={message.id}
-              style={{
-                display: 'flex',
-                justifyContent: message.sender === 'user' ? 'flex-end' : 'flex-start',
-                marginBottom: 16,
-              }}
+              className={`chat-msg-row ${message.sender === 'user' ? 'chat-msg-row--user' : 'chat-msg-row--bot'}`}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  maxWidth: '70%',
-                  flexDirection: message.sender === 'user' ? 'row-reverse' : 'row',
-                }}
-              >
+              <div className="chat-msg-wrap">
                 <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '50%',
-                    backgroundColor: message.sender === 'user' ? '#3b82f6' : '#333',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
+                  className={`chat-avatar ${message.sender === 'user' ? 'chat-avatar--user' : 'chat-avatar--bot'}`}
+                  aria-hidden
                 >
                   {message.sender === 'user' ? <User size={16} color="#fff" /> : <Bot size={16} color="#ccc" />}
                 </div>
-                <div
-                  style={{
-                    backgroundColor: message.sender === 'user' ? '#3b82f6' : '#1a1a1a',
-                    color: message.sender === 'user' ? '#fff' : '#e5e5e5',
-                    padding: '12px 16px',
-                    borderRadius: 16,
-                    borderBottomLeftRadius: message.sender === 'user' ? 16 : 4,
-                    borderBottomRightRadius: message.sender === 'user' ? 4 : 16,
-                    border: message.sender === 'user' ? 'none' : '1px solid #333',
-                    fontSize: 14,
-                    lineHeight: 1.4,
-                  }}
-                >
+                <div className={`chat-bubble ${message.sender === 'user' ? 'chat-bubble--user' : 'chat-bubble--bot'}`}>
                   {message.sender === 'bot' && Array.isArray(message.text) ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {message.text.map((point, i) => (
                         <FormattedBotMessage key={i} content={String(point)} />
                       ))}
                       {message.sources && message.sources.length > 0 && (
-                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #333', fontSize: 12, color: '#888' }}>
-                          <span style={{ fontWeight: 600, color: '#94a3b8' }}>Sources </span>
+                        <div className="chat-sources">
+                          <span className="chat-sources-label">Sources </span>
                           {message.sources.map((src, i) => (
                             <span key={i}>
                               {i > 0 && <span style={{ margin: '0 4px' }}>·</span>}
-                              <a href={src.link} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>
+                              <a href={src.link} target="_blank" rel="noopener noreferrer" className="chat-source-link">
                                 {src.file}{src.page ? ` p.${src.page}` : ''}
                               </a>
                             </span>
@@ -290,15 +225,17 @@ export default function ChatPage() {
           ))}
 
           {isLoading && (
-            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, maxWidth: '70%' }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="chat-msg-row chat-msg-row--bot">
+              <div className="chat-msg-wrap">
+                <div className="chat-avatar chat-avatar--bot" aria-hidden>
                   <Bot size={16} color="#ccc" />
                 </div>
-                <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #333', padding: '12px 16px', borderRadius: 16, borderBottomLeftRadius: 4, display: 'flex', gap: 4 }}>
-                  <div style={{ width: 8, height: 8, backgroundColor: '#666', borderRadius: '50%', animation: 'bounce 1.4s infinite ease-in-out' }} />
-                  <div style={{ width: 8, height: 8, backgroundColor: '#666', borderRadius: '50%', animation: 'bounce 1.4s infinite ease-in-out', animationDelay: '0.16s' }} />
-                  <div style={{ width: 8, height: 8, backgroundColor: '#666', borderRadius: '50%', animation: 'bounce 1.4s infinite ease-in-out', animationDelay: '0.32s' }} />
+                <div className="chat-bubble chat-bubble--bot chat-bubble--typing">
+                  <div className="chat-typing-row">
+                    <div className="chat-typing-dot" />
+                    <div className="chat-typing-dot chat-typing-dot--2" />
+                    <div className="chat-typing-dot chat-typing-dot--3" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -308,63 +245,29 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div
-        style={{
-          backgroundColor: '#111',
-          borderTop: '1px solid #333',
-          padding: '16px 24px',
-          position: 'sticky',
-          bottom: 0,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ maxWidth: 800, margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-            <div style={{ flex: 1, position: 'relative' }}>
-              <textarea
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
-                style={{
-                  width: '100%',
-                  backgroundColor: '#222',
-                  border: '1px solid #444',
-                  borderRadius: 20,
-                  padding: '12px 50px 12px 16px',
-                  color: '#fff',
-                  fontSize: 14,
-                  outline: 'none',
-                  resize: 'none',
-                  minHeight: 44,
-                  maxHeight: 120,
-                  fontFamily: 'inherit',
-                  boxSizing: 'border-box',
-                }}
-                rows={1}
-              />
-              <button
-                type="button"
-                onClick={sendMessage}
-                disabled={!inputMessage.trim() || isLoading}
-                style={{
-                  position: 'absolute',
-                  right: 8,
-                  bottom: 8,
-                  width: 32,
-                  height: 32,
-                  backgroundColor: !inputMessage.trim() || isLoading ? '#444' : '#3b82f6',
-                  border: 'none',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: !inputMessage.trim() || isLoading ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <Send size={16} color="#fff" />
-              </button>
-            </div>
+      <div className="chat-composer">
+        <div className="chat-composer-inner">
+          <div className="chat-textarea-wrap">
+            <textarea
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about policies…"
+              className="chat-textarea"
+              rows={1}
+              enterKeyHint="send"
+              autoComplete="off"
+              autoCorrect="on"
+            />
+            <button
+              type="button"
+              onClick={sendMessage}
+              disabled={!inputMessage.trim() || isLoading}
+              className="chat-send-btn"
+              aria-label="Send message"
+            >
+              <Send size={18} color="#fff" />
+            </button>
           </div>
         </div>
       </div>
