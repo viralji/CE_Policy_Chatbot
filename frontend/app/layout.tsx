@@ -2,6 +2,10 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from './providers';
 
+// Avoid long-lived CDN/browser HTML cache (mobile users were seeing stale shells / white screen).
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: 'CloudExtel Policy Assistant',
   description: 'Ask questions about company policies',
@@ -10,6 +14,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 5,
+  themeColor: '#000000',
+  colorScheme: 'dark',
 };
 
 export default function RootLayout({

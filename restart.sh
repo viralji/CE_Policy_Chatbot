@@ -11,25 +11,35 @@ FRONTEND_PORT=${CE_CHATBOT_FRONTEND_PORT:-5174}
 
 echo "Stopping existing processes..."
 
-# Kill by port (works for any process on that port)
+# Kill listeners on app ports (fuser + lsof — stale next-server often survives npm-only kills)
 for port in $BACKEND_PORT $FRONTEND_PORT; do
+  if command -v fuser &>/dev/null; then
+    fuser -k -n tcp "$port" 2>/dev/null || true
+  fi
   if command -v lsof &>/dev/null; then
-    pid=$(lsof -ti ":$port" 2>/dev/null) || true
-    if [ -n "$pid" ]; then
-      kill $pid 2>/dev/null || true
-      sleep 1
-      kill -9 $pid 2>/dev/null || true
-    fi
-  elif command -v fuser &>/dev/null; then
-    fuser -k "$port/tcp" 2>/dev/null || true
+    for pid in $(lsof -ti ":$port" 2>/dev/null); do
+      kill "$pid" 2>/dev/null || true
+    done
+    sleep 1
+    for pid in $(lsof -ti ":$port" 2>/dev/null); do
+      kill -9 "$pid" 2>/dev/null || true
+    done
   fi
 done
 
-# Fallback: kill by process name
 pkill -f "gunicorn.*app:app" 2>/dev/null || true
 pkill -f "python.*app.py" 2>/dev/null || true
 pkill -f "next start" 2>/dev/null || true
 pkill -f "next dev" 2>/dev/null || true
+# Last resort: any next-server still holding the frontend port (old deploys)
+for _try in 1 2 3; do
+  if command -v lsof &>/dev/null && [ -n "$(lsof -ti ":$FRONTEND_PORT" 2>/dev/null)" ]; then
+    for pid in $(lsof -ti ":$FRONTEND_PORT" 2>/dev/null); do kill -9 "$pid" 2>/dev/null || true; done
+    sleep 1
+  else
+    break
+  fi
+done
 sleep 2
 
 mkdir -p "$SCRIPT_DIR/logs"

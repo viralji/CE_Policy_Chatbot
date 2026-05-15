@@ -21,9 +21,9 @@ if [ ! -d "venv" ]; then
   echo "      Creating venv..."
   python3 -m venv venv
 fi
-# Use venv's pip explicitly (avoids externally-managed-environment on some systems)
-./venv/bin/pip install -q --upgrade pip
-./venv/bin/pip install -q -r requirements.txt
+# Use venv python -m pip (works when venv/bin/pip shebang is broken after OS/Python upgrades)
+./venv/bin/python -m pip install -q --upgrade pip
+./venv/bin/python -m pip install -q -r requirements.txt
 cd "$SCRIPT_DIR"
 
 # 3. Frontend: install + build
