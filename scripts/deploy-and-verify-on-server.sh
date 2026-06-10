@@ -41,7 +41,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${APP_PORT}/" 2>
 if [ "$CODE" = "200" ] || [ "$CODE" = "307" ]; then
   echo "✓ GET / → $CODE"
 else
-  echo "✗ GET / → $CODE (check: logs/backend.log logs/frontend.log)"
+  echo "✗ GET / → $CODE (check: pm2 logs policy-chatbot-frontend)"
   exit 1
 fi
 

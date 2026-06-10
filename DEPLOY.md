@@ -19,9 +19,9 @@ See **[README.md](README.md)** for overview. Run from the **project root** (wher
 ./restart.sh
 ```
 
-- Stops whatever is running on **backend port** (default 4001) and **frontend port** (default 5174)
-- Starts backend: `python3 app.py` from `backend/` with `venv`
-- Starts frontend: if `frontend/.next` exists (after build), runs `npm run start` (Next.js production); otherwise `npm run dev`
+- Restarts **PM2** processes `policy-chatbot-backend` (gunicorn on **4001**) and `policy-chatbot-frontend` (Next.js on **5174**)
+- On first run, clears any legacy `nohup` listeners on those ports, then `pm2 start ecosystem.config.js`
+- **No new public ports** — only localhost **4001** / **5174**; nginx on **80/443** proxies to **5174**
 
 To avoid port conflict with other apps on the same server, set before running:
 
@@ -32,10 +32,11 @@ export CE_CHATBOT_BACKEND_PORT=4002 CE_CHATBOT_FRONTEND_PORT=5175
 
 Then use the same frontend port in nginx `proxy_pass` (see below).
 
-## Logs and PIDs
+## Logs and PM2
 
-- **Logs:** `logs/backend.log`, `logs/frontend.log` (created on first run)
-- **PIDs:** `.backend.pid`, `.frontend.pid` (in `.gitignore`)
+- **PM2:** `pm2 list`, `pm2 logs policy-chatbot-frontend`, `pm2 logs policy-chatbot-backend`
+- **Log files:** `logs/backend-*.log`, `logs/frontend-*.log`, `logs/backend-access.log`
+- **Persist across reboot:** `pm2 save` (run automatically by `restart.sh`; server uses `pm2-root` systemd)
 
 ---
 
